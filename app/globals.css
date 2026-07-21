@@ -1,0 +1,45 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --font-sans: ui-rounded, 'SF Pro Rounded', var(--font-nunito), system-ui,
+    -apple-system, sans-serif;
+}
+
+html {
+  background: #0e0e10;
+}
+
+body {
+  color: #ffffff;
+  font-family: var(--font-sans);
+  overscroll-behavior-y: none;
+  min-height: 100vh;
+  background-color: #0e0e10;
+  background-image: radial-gradient(
+    ellipse 90% 55% at 50% -5%,
+    rgba(160, 160, 168, 0.35),
+    rgba(120, 120, 128, 0.12) 35%,
+    rgba(14, 14, 16, 0) 65%
+  );
+  background-repeat: no-repeat;
+  background-attachment: fixed;
+}
+
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+::-webkit-scrollbar {
+  display: none;
+}
+
+@keyframes fadeSlideUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-in {
+  animation: fadeSlideUp 0.35s ease-out both;
+}
