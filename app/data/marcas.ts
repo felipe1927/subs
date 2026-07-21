@@ -78,21 +78,18 @@ export const POPULARES: Marca[] = [
   // 🎓 Educación
   { nombre: 'Coursera Plus', bg: '#0056D2', texto: '#FFFFFF', icono: '/iconos/courseraplus.png' },
   { nombre: 'LinkedIn Learning', bg: '#0A66C2', texto: '#FFFFFF', icono: '/iconos/linkedinlearning.png' },
-  { nombre: 'Udemy', bg: '#A435F0', texto: '#FFFFFF', icono: '/iconos/udemypersonalplan.png' , popular: true },
+  { nombre: 'Udemy', bg: '#A435F0', texto: '#FFFFFF', icono: '/iconos/udemy.png' , popular: true },
   { nombre: 'Duolingo Super', bg: '#58CC02', texto: '#000000', icono: '/iconos/duolingosuper.png', popular: true },
   { nombre: 'Platzi', bg: '#00B14F', texto: '#FFFFFF', icono: '/iconos/platzi.png' , popular: true},
 
   // 💪 Fitness y bienestar
   { nombre: 'Apple Fitness+', bg: '#000000', texto: '#FE2C55', icono: '/iconos/applefitnessplus.png' },
-  { nombre: 'Centr', bg: '#000000', texto: '#C6FF00', icono: '/iconos/centr.png' },
   { nombre: 'Nike Training Club Premium', bg: '#000000', texto: '#FFFFFF', icono: '/iconos/niketrainingclubpremium.png' },
   { nombre: 'Strava Summit', bg: '#FC4C02', texto: '#FFFFFF', icono: '/iconos/stravasummit.png' , popular: true},
 
   // 🛡️ Seguridad y VPN
   { nombre: 'NordVPN', bg: '#4687FF', texto: '#FFFFFF', icono: '/iconos/nordvpn.png', popular: true },
   { nombre: 'ExpressVPN', bg: '#DA3940', texto: '#FFFFFF', icono: '/iconos/expressvpn.png' },
-  { nombre: 'Surfshark', bg: '#1EE6B5', texto: '#000000', icono: '/iconos/surfshark.png' },
-  { nombre: 'Proton VPN', bg: '#6D4AFF', texto: '#FFFFFF', icono: '/iconos/protonvpn.png' },
   { nombre: 'Bitdefender Premium', bg: '#ED1C24', texto: '#FFFFFF', icono: '/iconos/bitdefenderpremium.png' },
   { nombre: 'Malwarebytes Premium', bg: '#0D1B2A', texto: '#4285F4', icono: '/iconos/malwarebytespremium.png' },
 
@@ -105,9 +102,6 @@ export const POPULARES: Marca[] = [
   { nombre: 'Midjourney', bg: '#000000', texto: '#FFFFFF', icono: '/iconos/midjourney.png' },
   { nombre: 'Runway', bg: '#000000', texto: '#00FF88', icono: '/iconos/runway.png' },
   { nombre: 'Leonardo AI', bg: '#1A1A2E', texto: '#B18CFF', icono: '/iconos/leonardoai.png' },
-  { nombre: 'ElevenLabs', bg: '#000000', texto: '#FFFFFF', icono: '/iconos/elevenlabs.png' },
-  { nombre: 'Suno', bg: '#1B1B1B', texto: '#FFFFFF', icono: '/iconos/suno.png' },
-  { nombre: 'Udio', bg: '#0E0E10', texto: '#FF5C8A', icono: '/iconos/udio.png' },
 
   // 💼 Productividad
   { nombre: 'Microsoft 365', bg: '#EB3C00', texto: '#FFFFFF', icono: '/iconos/microsoft365.png', popular: true },
