@@ -589,6 +589,7 @@ export default function Home() {
     <main
       className="min-h-screen text-white overscroll-y-contain antialiased"
       style={{
+        paddingTop: 'env(safe-area-inset-top)',
         paddingBottom: 'calc(8rem + env(safe-area-inset-bottom))',
         fontFamily: '"Plus Jakarta Sans", system-ui, sans-serif',
       }}
