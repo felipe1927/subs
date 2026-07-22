@@ -511,15 +511,15 @@ function FilaSuscripcion({
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerUp}
       >
-        <LogoAvatar s={s} />
+        <LogoAvatar s={s} size="w-16 h-16" textSize="text-2xl" />
         <div className="flex-1 min-w-0 flex items-center justify-between gap-3">
           <div className="min-w-0">
-            <p className="text-lg font-semibold truncate">{s.nombre}</p>
-            <p className="text-white/50 text-base">
+            <p className="text-xl font-semibold truncate">{s.nombre}</p>
+            <p className="text-white/50 text-lg">
               {formatCOP(s.precio)} / {freq === 'mensual' ? 'm' : freq === 'anual' ? 'a' : 's'}
             </p>
           </div>
-          <div className="flex flex-col items-end gap-2 shrink-0 w-32">
+          <div className="flex flex-col items-end gap-2 shrink-0 w-20">
             <span className={`text-lg font-bold tracking-tight whitespace-nowrap ${colores.texto}`}>{etiquetaFecha(fechaPago)}</span>
             <div className="w-full h-1 rounded-full bg-white/10 overflow-hidden">
               <div className={`h-full rounded-full ${colores.barra}`} style={{ width: `${progreso}%` }} />
@@ -712,6 +712,14 @@ export default function Home() {
     return grupos;
   }, [subs, orden]);
 
+  // Si TODAS las suscripciones son mensuales (no hay anuales ni semanales),
+  // no tiene sentido mostrar el encabezado "Mensual": solo ayuda a separar
+  // cuando conviven distintas frecuencias.
+  const cantidadGruposConDatos = (['mensual', 'anual', 'semanal'] as Frecuencia[]).filter(
+    (f) => porFrecuencia[f].length > 0
+  ).length;
+  const mostrarEncabezadosFrecuencia = cantidadGruposConDatos > 1;
+
   const etiquetaOrden =
     orden === 'az' ? 'A-Z' : orden === 'barato' ? 'Barato' : orden === 'caro' ? 'Caro' : 'Próximos';
 
@@ -776,8 +784,10 @@ export default function Home() {
         className="fixed left-0 right-0 top-0 z-10 pointer-events-none"
         style={{
           height: 'env(safe-area-inset-top)',
-          backdropFilter: 'blur(28px) saturate(180%)',
-          WebkitBackdropFilter: 'blur(28px) saturate(180%)',
+          backdropFilter: 'blur(2.8px) saturate(180%)',
+          WebkitBackdropFilter: 'blur(2.8px) saturate(180%)',
+          maskImage: 'linear-gradient(to bottom, black 85%, transparent 100%)',
+          WebkitMaskImage: 'linear-gradient(to bottom, black 85%, transparent 100%)',
         }}
       />
 
@@ -967,14 +977,14 @@ export default function Home() {
                     className="relative snap-start shrink-0 min-w-[190px] w-max"
                   >
                     <div
-                      className={`rounded-3xl p-5 border overflow-hidden relative ${
+                      className={`rounded-3xl p-3.5 border overflow-hidden relative ${
                         dias <= 0 ? 'border-red-500/20' : 'border-white/10'
                       }`}
                       style={{
                         background: `radial-gradient(circle at 48px 48px, ${s.colorFondo}80, ${s.colorFondo}30 58%, transparent 96%)`,
                       }}
                     >
-                      <div className="flex items-center gap-4 mb-4">
+                      <div className="flex items-center gap-3 mb-3">
                         <LogoAvatar s={s} />
                         <div>
                           <p className="text-lg font-semibold whitespace-nowrap">{s.nombre}</p>
@@ -984,8 +994,8 @@ export default function Home() {
                           </p>
                         </div>
                       </div>
-                      <div className="flex items-center gap-3">
-                        <span className={`text-sm font-medium shrink-0 ${colores.texto}`}>
+                      <div className="flex items-center gap-2">
+                        <span className={`text-lg font-bold shrink-0 ${colores.texto}`}>
                           {etiquetaFecha(fechaPago)}
                         </span>
                         <div className="flex-1 h-1 rounded-full bg-white/10 overflow-hidden">
@@ -1060,10 +1070,12 @@ export default function Home() {
         {(['mensual', 'anual', 'semanal'] as Frecuencia[]).map((freq) =>
           porFrecuencia[freq].length > 0 ? (
             <div key={freq} className="mb-6">
-              <p className="text-white/40 text-sm mb-3 capitalize">
-                {freq === 'mensual' ? 'Mensual' : freq === 'anual' ? 'Anual' : 'Semanal'}
-              </p>
-              <div className="flex flex-col gap-4">
+              {mostrarEncabezadosFrecuencia && (
+                <p className="text-white/40 text-base mb-3 capitalize">
+                  {freq === 'mensual' ? 'Mensual' : freq === 'anual' ? 'Anual' : 'Semanal'}
+                </p>
+              )}
+              <div className="flex flex-col gap-6">
                 {porFrecuencia[freq].map((s) => (
                   <FilaSuscripcion key={s.id} s={s} freq={freq} onEditar={abrirEdicion} />
                 ))}
