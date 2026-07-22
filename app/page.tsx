@@ -591,7 +591,6 @@ export default function Home() {
       style={{
         paddingTop: 'env(safe-area-inset-top)',
         paddingBottom: 'calc(8rem + env(safe-area-inset-bottom))',
-        fontFamily: '"Plus Jakarta Sans", system-ui, sans-serif',
       }}
     >
       <div className="max-w-md mx-auto px-5 pt-8">
@@ -773,8 +772,8 @@ export default function Home() {
         className="fixed left-0 right-0 top-0 z-10 pointer-events-none"
         style={{
           height: 'env(safe-area-inset-top)',
-          backdropFilter: 'blur(2.3px) saturate(90%)',
-          WebkitBackdropFilter: 'blur(2.3px) saturate(90%)',
+          backdropFilter: 'blur(2.8px) saturate(90%)',
+          WebkitBackdropFilter: 'blur(2.8px) saturate(90%)',
           maskImage: 'linear-gradient(to bottom, black 85%, transparent 100%)',
           WebkitMaskImage: 'linear-gradient(to bottom, black 85%, transparent 100%)',
         }}
@@ -787,8 +786,8 @@ export default function Home() {
         className="fixed left-0 right-0 bottom-0 z-10 pointer-events-none"
         style={{
           height: 'calc(110px + env(safe-area-inset-bottom))',
-          backdropFilter: 'blur(2.3px) saturate(90%)',
-          WebkitBackdropFilter: 'blur(2.3px) saturate(90%)',
+          backdropFilter: 'blur(2.8px) saturate(90%)',
+          WebkitBackdropFilter: 'blur(2.8px) saturate(90%)',
           maskImage: 'linear-gradient(to top, black 85%, transparent 100%)',
           WebkitMaskImage: 'linear-gradient(to top, black 85%, transparent 100%)',
         }}
