@@ -768,13 +768,13 @@ export default function Home() {
       </div>
 
       {/* Barra de status bar difuminada, estilo nativo iOS: blur sólido y
-          parejo, sin degradado, con un borde inferior sutil para separación */}
+          parejo, sin degradado, sin borde, para que se sienta continuo */}
       <div
-        className="fixed left-0 right-0 top-0 z-10 pointer-events-none border-b border-white/[0.06]"
+        className="fixed left-0 right-0 top-0 z-10 pointer-events-none"
         style={{
           height: 'env(safe-area-inset-top)',
-          backdropFilter: 'blur(20px) saturate(180%)',
-          WebkitBackdropFilter: 'blur(20px) saturate(180%)',
+          backdropFilter: 'blur(2.3px) saturate(90%)',
+          WebkitBackdropFilter: 'blur(2.3px) saturate(90%)',
           backgroundColor: 'rgba(14, 14, 16, 0.55)',
         }}
       />
