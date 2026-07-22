@@ -43,3 +43,36 @@ body {
 .animate-in {
   animation: fadeSlideUp 0.35s ease-out both;
 }
+
+html, body {
+  overscroll-behavior: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Oculta la barra de scroll en toda la app, cualquier navegador */
+html, body {
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* Edge viejo */
+}
+html::-webkit-scrollbar,
+body::-webkit-scrollbar {
+  display: none; /* Chrome, Safari */
+}
+
+body {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none; /* evita el menú de "copiar/guardar imagen" al mantener presionado */
+}
+
+/* Pero los inputs SÍ deben permitir seleccionar texto para poder editarlos */
+input, textarea {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+img {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}

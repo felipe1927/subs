@@ -767,6 +767,18 @@ export default function Home() {
         )}
       </div>
 
+      {/* Barra de status bar difuminada, estilo nativo iOS: blur sólido y
+          parejo, sin degradado, con un borde inferior sutil para separación */}
+      <div
+        className="fixed left-0 right-0 top-0 z-10 pointer-events-none border-b border-white/[0.06]"
+        style={{
+          height: 'env(safe-area-inset-top)',
+          backdropFilter: 'blur(20px) saturate(180%)',
+          WebkitBackdropFilter: 'blur(20px) saturate(180%)',
+          backgroundColor: 'rgba(14, 14, 16, 0.55)',
+        }}
+      />
+
       {/* Difuminado estilo "glass" detrás del botón flotante: blur fuerte +
           saturación, con un desvanecido muy corto (casi de golpe) en el borde
           superior en vez de un degradado largo */}
