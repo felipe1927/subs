@@ -1099,8 +1099,8 @@ export default function Home() {
         className="fixed left-0 right-0 bottom-0 z-10 pointer-events-none"
         style={{
           height: 'calc(110px + env(safe-area-inset-bottom))',
-          backdropFilter: 'blur(2.3px) saturate(90%)',
-          WebkitBackdropFilter: 'blur(2.3px) saturate(90%)',
+          backdropFilter: 'blur(2.8px) saturate(90%)',
+          WebkitBackdropFilter: 'blur(2.8px) saturate(90%)',
           maskImage: 'linear-gradient(to top, black 85%, transparent 100%)',
           WebkitMaskImage: 'linear-gradient(to top, black 85%, transparent 100%)',
         }}
