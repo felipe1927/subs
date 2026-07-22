@@ -11,6 +11,11 @@ const nunito = Nunito({
 export const metadata: Metadata = {
   title: 'Mis Suscripciones',
   description: 'Administra tus suscripciones en pesos colombianos (COP)',
+  appleWebApp: {
+    capable: true,
+    title: 'Suscripciones',
+    statusBarStyle: 'black-translucent',
+  },
 };
 
 export const viewport: Viewport = {
