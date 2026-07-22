@@ -69,8 +69,8 @@ export const POPULARES: Marca[] = [
   { nombre: 'GeForce NOW', bg: '#76B900', texto: '#000000', icono: '/iconos/geforcenow.png' },
 
   // 📚 Libros y audiolibros
-  { nombre: 'Kindle Unlimited', bg: '#111111', texto: '#FF9900', icono: '/iconos/kindleunlimited.png', popular: true },
-  { nombre: 'Audible', bg: '#000000', texto: '#F8991C', icono: '/iconos/audible.png', popular: true },
+  { nombre: 'Kindle Unlimited', bg: '#FF940B ', texto: '#000000', icono: '/iconos/kindleunlimited.png', popular: true },
+  { nombre: 'Audible', bg: '#F8991C', texto: '#000000', icono: '/iconos/audible.png', popular: true },
   { nombre: 'Everand', bg: '#1B5E3F', texto: '#FFFFFF', icono: '/iconos/everand.png' },
   { nombre: 'Storytel', bg: '#EB2B3B', texto: '#FFFFFF', icono: '/iconos/storytel.png' },
   { nombre: 'BookBeat', bg: '#00C9A7', texto: '#000000', icono: '/iconos/bookbeat.png' },

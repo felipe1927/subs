@@ -15,7 +15,7 @@ import {
   Pencil,
   ChevronsUpDown,
   TrendingUp,
-  CalendarDays,
+  CalendarRange,
   Clapperboard,
   Music,
   Gamepad2,
@@ -29,6 +29,24 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { POPULARES, MARCAS_POPULARES, MARCAS_TODAS, normalizarTexto, type Marca } from './data/marcas';
+
+// Agrupa MARCAS_TODAS (ya viene ordenado A-Z) por su letra inicial, para
+// mostrarlo en el selector como una lista tipo "Contactos": cada grupo
+// con su propio encabezado de letra que se queda fijo (sticky) mientras
+// se hace scroll por ese grupo.
+const MARCAS_POR_LETRA: { letra: string; marcas: Marca[] }[] = (() => {
+  const grupos: { letra: string; marcas: Marca[] }[] = [];
+  for (const m of MARCAS_TODAS) {
+    const letra = normalizarTexto(m.nombre).charAt(0).toUpperCase();
+    const ultimo = grupos[grupos.length - 1];
+    if (ultimo && ultimo.letra === letra) {
+      ultimo.marcas.push(m);
+    } else {
+      grupos.push({ letra, marcas: [m] });
+    }
+  }
+  return grupos;
+})();
 
 const CATEGORIAS: { nombre: string; Icono: LucideIcon }[] = [
   { nombre: 'Streaming', Icono: Clapperboard },
@@ -179,6 +197,122 @@ function frecuenciaAMeses(f: Frecuencia) {
   return 1 / 4.345; // semanal -> fracción de mes
 }
 
+// Calcula el diámetro (en px) de la burbuja según el precio, relativo al
+// rango de precios de las suscripciones activas (la más cara = MAX_PX,
+// la más barata = MIN_PX). Si todas cuestan igual, usa un tamaño medio.
+const MIN_PX_BURBUJA = 34;
+const MAX_PX_BURBUJA = 72;
+
+// Alto del área de burbujas: SIEMPRE es este valor fijo, sin importar
+// cuántas suscripciones haya o qué tan ancha esté la tarjeta. Lo que
+// cambia es el ancho (ver `anchoBurbujas` en el componente), que se mide
+// en tiempo real para aprovechar todo el espacio horizontal disponible.
+const ALTO_CONTENEDOR_BURBUJAS_PX = 180;
+
+// Qué tan "llena" (proporción del área elíptica del contenedor) puede
+// verse la zona de burbujas antes de agrupar el resto en un "+X". Subir
+// este valor deja que se vean más apretadas antes de agrupar; bajarlo
+// agrupa antes. 0.62 da un balance entre "se ve lleno" y que no se
+// encimen demasiado.
+const FACTOR_LLENADO_MAX = 0.62;
+
+function diametroBurbuja(precio: number, min: number, max: number) {
+  if (max === min) return (MIN_PX_BURBUJA + MAX_PX_BURBUJA) / 2;
+  const t = (precio - min) / (max - min);
+  return Math.round(MIN_PX_BURBUJA + t * (MAX_PX_BURBUJA - MIN_PX_BURBUJA));
+}
+
+type PosicionBurbuja = { x: number; y: number; r: number };
+
+// Acomoda círculos de radios variados dentro de un contenedor circular,
+// tipo el grid de apps de watchOS: empieza en espiral áurea desde el
+// centro y luego "empuja" los que se traslapan hasta que quedan
+// acomodados tocándose entre sí, sin salirse del contenedor.
+function empacarBurbujas(
+  radios: number[],
+  radioContenedorX: number,
+  radioContenedorY: number
+): PosicionBurbuja[] {
+  const n = radios.length;
+  const posiciones: PosicionBurbuja[] = radios.map((r, i) => {
+    const angulo = i * 137.5 * (Math.PI / 180); // ángulo áureo
+    const distancia = 7 * Math.sqrt(i);
+    return {
+      x: distancia * Math.cos(angulo),
+      y: distancia * Math.sin(angulo),
+      r,
+    };
+  });
+
+  const SEPARACION = 3; // px de "aire" entre burbujas, como en watchOS
+
+  for (let iter = 0; iter < 300; iter++) {
+    for (let i = 0; i < n; i++) {
+      for (let j = i + 1; j < n; j++) {
+        const a = posiciones[i];
+        const b = posiciones[j];
+        const dx = b.x - a.x;
+        const dy = b.y - a.y;
+        const dist = Math.sqrt(dx * dx + dy * dy) || 0.01;
+        const minDist = a.r + b.r + SEPARACION;
+        if (dist < minDist) {
+          const empuje = (minDist - dist) / 2;
+          const ux = dx / dist;
+          const uy = dy / dist;
+          a.x -= ux * empuje;
+          a.y -= uy * empuje;
+          b.x += ux * empuje;
+          b.y += uy * empuje;
+        }
+      }
+      // Mantiene la burbuja dentro de un contenedor elíptico (ancho
+      // distinto al alto): normaliza su posición por el radio libre en
+      // cada eje (radioContenedor - r) y, si esa distancia normalizada
+      // se pasa de 1, la trae de vuelta al borde de la elipse.
+      const p = posiciones[i];
+      const limiteX = radioContenedorX - p.r;
+      const limiteY = radioContenedorY - p.r;
+      if (limiteX > 0 && limiteY > 0) {
+        const nx = p.x / limiteX;
+        const ny = p.y / limiteY;
+        const distNorm = Math.sqrt(nx * nx + ny * ny);
+        if (distNorm > 1) {
+          p.x = p.x / distNorm;
+          p.y = p.y / distNorm;
+        }
+      }
+    }
+  }
+
+  return posiciones;
+}
+
+// Hash simple y determinista (mismo id siempre da el mismo resultado), para
+// que cada burbuja tenga su propio "estilo" de flote sin necesitar estado
+// ni Math.random() en cada render (eso haría que el movimiento saltara
+// cada vez que la app se vuelve a renderizar).
+function hashTexto(texto: string) {
+  let h = 0;
+  for (let i = 0; i < texto.length; i++) {
+    h = (h << 5) - h + texto.charCodeAt(i);
+    h |= 0;
+  }
+  return Math.abs(h);
+}
+
+// Parámetros del flote "sin gravedad": amplitud pequeña (4-9px), duración
+// larga (8-13s) y un desfase de inicio distinto por burbuja, para que
+// ninguna se mueva en sincronía con las demás.
+function parametrosFlote(id: string) {
+  const h = hashTexto(id);
+  return {
+    fx: 4 + (h % 6), // 4-9px en X
+    fy: 4 + ((h >> 4) % 6), // 4-9px en Y
+    duracion: 8 + ((h >> 8) % 6), // 8-13s
+    retraso: -((h >> 12) % 100) / 10, // negativo: arranca "a mitad de camino"
+  };
+}
+
 const COLORES_LOGO = [
   { bg: '#DC2626', text: '#FFFFFF' },
   { bg: '#059669', text: '#FFFFFF' },
@@ -201,6 +335,7 @@ function AvatarImagen({
   textSize = 'text-xl',
   redondeo = 'rounded-2xl',
   className = '',
+  sizePx,
 }: {
   src?: string;
   bg: string;
@@ -211,6 +346,7 @@ function AvatarImagen({
   textSize?: string;
   redondeo?: string;
   className?: string;
+  sizePx?: number;
 }) {
   const [error, setError] = useState(false);
 
@@ -218,11 +354,13 @@ function AvatarImagen({
     setError(false);
   }, [src]);
 
+  const estiloTamano = sizePx ? { width: sizePx, height: sizePx } : undefined;
+
   if (src && !error) {
     return (
       <div
         className={`${size} ${redondeo} overflow-hidden flex items-center justify-center shrink-0 ${className}`}
-        style={{ backgroundColor: bg }}
+        style={{ backgroundColor: bg, ...estiloTamano }}
       >
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
@@ -239,7 +377,7 @@ function AvatarImagen({
   return (
     <div
       className={`${size} ${redondeo} flex items-center justify-center ${textSize} font-bold shrink-0 ${className}`}
-      style={{ backgroundColor: bg, color: texto }}
+      style={{ backgroundColor: bg, color: texto, ...estiloTamano }}
     >
       {inicial}
     </div>
@@ -251,11 +389,13 @@ function LogoAvatar({
   size = 'w-14 h-14',
   textSize = 'text-xl',
   redondeo = 'rounded-2xl',
+  sizePx,
 }: {
   s: Suscripcion;
   size?: string;
   textSize?: string;
   redondeo?: string;
+  sizePx?: number;
 }) {
   return (
     <AvatarImagen
@@ -267,6 +407,7 @@ function LogoAvatar({
       size={size}
       textSize={textSize}
       redondeo={redondeo}
+      sizePx={sizePx}
     />
   );
 }
@@ -373,13 +514,13 @@ function FilaSuscripcion({
         <LogoAvatar s={s} />
         <div className="flex-1 min-w-0 flex items-center justify-between gap-3">
           <div className="min-w-0">
-            <p className="font-semibold truncate">{s.nombre}</p>
-            <p className="text-white/50 text-sm">
+            <p className="text-lg font-semibold truncate">{s.nombre}</p>
+            <p className="text-white/50 text-base">
               {formatCOP(s.precio)} / {freq === 'mensual' ? 'm' : freq === 'anual' ? 'a' : 's'}
             </p>
           </div>
-          <div className="flex flex-col items-end gap-2 shrink-0 w-24">
-            <span className={`text-sm font-medium ${colores.texto}`}>{etiquetaFecha(fechaPago)}</span>
+          <div className="flex flex-col items-end gap-2 shrink-0 w-32">
+            <span className={`text-lg font-bold tracking-tight whitespace-nowrap ${colores.texto}`}>{etiquetaFecha(fechaPago)}</span>
             <div className="w-full h-1 rounded-full bg-white/10 overflow-hidden">
               <div className={`h-full rounded-full ${colores.barra}`} style={{ width: `${progreso}%` }} />
             </div>
@@ -392,7 +533,49 @@ function FilaSuscripcion({
 
 export default function Home() {
   const [subs, setSubs] = useState<Suscripcion[]>(SEED);
+
+  // Mide en tiempo real el ancho disponible para las burbujas de "Vista
+  // rápida", así el contenedor se llena a lo ancho de la tarjeta sin
+  // importar el tamaño de pantalla. El alto NUNCA se toca: siempre es
+  // ALTO_CONTENEDOR_BURBUJAS_PX.
+  const burbujasContenedorRef = useRef<HTMLDivElement>(null);
+  const [anchoBurbujas, setAnchoBurbujas] = useState(320);
+
+  useEffect(() => {
+    const el = burbujasContenedorRef.current;
+    if (!el) return;
+    const observer = new ResizeObserver((entries) => {
+      const w = entries[0]?.contentRect.width;
+      if (w) setAnchoBurbujas(w);
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
   const [modalAbierto, setModalAbierto] = useState(false);
+
+  // Mide en tiempo real la altura del header pegajoso del modal de
+  // "Añadir suscripción" (título + buscador), para que los encabezados
+  // de "Populares" y de cada letra (A, B, C...) se peguen justo debajo,
+  // nunca se monten sobre él.
+  const headerModalRef = useRef<HTMLDivElement>(null);
+  const [alturaHeaderModal, setAlturaHeaderModal] = useState(148);
+
+  useEffect(() => {
+    const el = headerModalRef.current;
+    if (!el) return;
+    const observer = new ResizeObserver((entries) => {
+      const h = entries[0]?.contentRect.height;
+      // Redondea hacia arriba y resta 1px a propósito: así el encabezado
+      // sticky de "Populares"/letra queda 1px superpuesto con el header
+      // fijo de arriba (mismo color de fondo, invisible al ojo) en vez
+      // de dejar una línea de por medio por redondeos de subpíxel.
+      if (h) setAlturaHeaderModal(Math.ceil(h) - 1);
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
   const [cargado, setCargado] = useState(false);
 
   const [editando, setEditando] = useState<Suscripcion | null>(null);
@@ -496,18 +679,11 @@ export default function Home() {
     );
   }, [subs]);
 
-  const totalEsteMes = useMemo(() => {
-    return subs
-      .filter((s) => s.frecuencia === 'mensual')
-      .reduce((acc, s) => acc + s.precio, 0);
-  }, [subs]);
-
-  const destacada = useMemo(() => {
-    if (subs.length === 0) return null;
-    return [...subs].sort(
-      (a, b) => diasHasta(fechaEfectiva(a)) - diasHasta(fechaEfectiva(b))
-    )[0];
-  }, [subs]);
+  // Total anual proyectado: lo que gastarías en un año si mantienes
+  // exactamente las suscripciones de hoy (promedio mensual x 12).
+  const totalAnualProyectado = useMemo(() => {
+    return totalMensualEquivalente * 12;
+  }, [totalMensualEquivalente]);
 
   const proximas = useMemo(() => {
     return [...subs]
@@ -593,6 +769,18 @@ export default function Home() {
         paddingBottom: 'calc(8rem + env(safe-area-inset-bottom))',
       }}
     >
+      {/* Barra de status bar difuminada, estilo nativo iOS: blur sólido y
+          parejo, sin degradado ni tinte, para que se sienta continuo con
+          el contenido que pasa por debajo al hacer scroll */}
+      <div
+        className="fixed left-0 right-0 top-0 z-10 pointer-events-none"
+        style={{
+          height: 'env(safe-area-inset-top)',
+          backdropFilter: 'blur(28px) saturate(180%)',
+          WebkitBackdropFilter: 'blur(28px) saturate(180%)',
+        }}
+      />
+
       <div className="max-w-md mx-auto px-5 pt-8">
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
@@ -601,23 +789,137 @@ export default function Home() {
           </h1>
         </div>
 
-        {/* Tarjeta destacada */}
-        <div className="rounded-3xl p-5 bg-gradient-to-b from-white/[0.06] to-white/[0.02] border border-white/10 flex flex-col justify-between relative min-h-[220px] mb-3">
-          {destacada && (
-            <div className="flex-1 flex items-center justify-center">
-              <LogoAvatar
-                s={destacada}
-                size="w-20 h-20"
-                textSize="text-3xl"
-                redondeo="rounded-full"
-              />
-            </div>
-          )}
+        {/* Tarjeta destacada: burbujas empaquetadas tipo watchOS (tamaño
+            relativo al precio), con tope de burbujas visibles y un
+            círculo "+X" agrupando el resto */}
+        <div className="rounded-3xl p-5 bg-gradient-to-b from-white/[0.06] to-white/[0.02] border border-white/10 flex flex-col justify-between relative min-h-[260px] mb-3">
+          {subs.length > 0 && (() => {
+            const precios = subs.map((s) => s.precio);
+            const min = Math.min(...precios);
+            const max = Math.max(...precios);
+            const ordenadas = [...subs].sort((a, b) => b.precio - a.precio);
+
+            // Contenedor elíptico: ancho = todo el espacio medido de la
+            // tarjeta, alto = SIEMPRE fijo (nunca cambia).
+            const radioContenedorX = Math.max(anchoBurbujas / 2 - 2, 40);
+            const radioContenedorY = ALTO_CONTENEDOR_BURBUJAS_PX / 2;
+            const radioBurbujaMas = MIN_PX_BURBUJA / 2 + 4;
+
+            const radiosTotales = ordenadas.map(
+              (s) => diametroBurbuja(s.precio, min, max) / 2
+            );
+
+            // En vez de un tope fijo de burbujas, se llena el ancho
+            // disponible por ÁREA: mientras las burbujas quepan sin
+            // superar FACTOR_LLENADO_MAX del área elíptica del
+            // contenedor, se siguen mostrando. Solo cuando ya no caben
+            // más (el contenedor está "realmente lleno a lo ancho")
+            // aparece el "+X" agrupando el resto.
+            const areaContenedor = Math.PI * radioContenedorX * radioContenedorY;
+            const areaTotalReal = radiosTotales.reduce(
+              (acc, r) => acc + Math.PI * r * r,
+              0
+            );
+
+            let visiblesCount = radiosTotales.length;
+            let restantes = 0;
+
+            if (areaTotalReal > areaContenedor * FACTOR_LLENADO_MAX) {
+              // No caben todas: reserva espacio para la burbuja "+X" y
+              // ve agregando burbujas (de más cara a más barata) hasta
+              // que agregar una más rompería el límite de llenado.
+              const areaBurbujaMas = Math.PI * radioBurbujaMas * radioBurbujaMas;
+              const presupuesto = areaContenedor * FACTOR_LLENADO_MAX - areaBurbujaMas;
+              let acumulada = 0;
+              visiblesCount = 0;
+              for (let i = 0; i < radiosTotales.length; i++) {
+                const areaBurbuja = Math.PI * radiosTotales[i] * radiosTotales[i];
+                if (acumulada + areaBurbuja > presupuesto) break;
+                acumulada += areaBurbuja;
+                visiblesCount++;
+              }
+              // Nunca deja el bloque vacío: como mínimo se ve 1 burbuja.
+              visiblesCount = Math.max(visiblesCount, 1);
+              restantes = radiosTotales.length - visiblesCount;
+            }
+
+            const visibles = ordenadas.slice(0, visiblesCount);
+            const radios = radiosTotales.slice(0, visiblesCount);
+            if (restantes > 0) radios.push(radioBurbujaMas);
+
+            const posiciones = empacarBurbujas(radios, radioContenedorX, radioContenedorY);
+
+            return (
+              <div
+                ref={burbujasContenedorRef}
+                className="flex-1 flex items-center justify-center"
+              >
+                <div
+                  className="relative w-full"
+                  style={{
+                    height: ALTO_CONTENEDOR_BURBUJAS_PX,
+                  }}
+                >
+                  {visibles.map((s, i) => {
+                    const pos = posiciones[i];
+                    const r = radios[i];
+                    const flote = parametrosFlote(s.id);
+                    return (
+                      <div
+                        key={s.id}
+                        className="absolute drop-shadow-[0_4px_10px_rgba(0,0,0,0.35)] burbuja-flotante"
+                        style={{
+                          width: r * 2,
+                          height: r * 2,
+                          left: `calc(50% + ${pos.x}px - ${r}px)`,
+                          top: `calc(50% + ${pos.y}px - ${r}px)`,
+                          animationDuration: `${flote.duracion}s`,
+                          animationDelay: `${flote.retraso}s`,
+                          ...({
+                            '--fx': `${flote.fx}px`,
+                            '--fy': `${flote.fy}px`,
+                          } as React.CSSProperties),
+                        }}
+                      >
+                        <LogoAvatar s={s} redondeo="rounded-full" sizePx={r * 2} />
+                      </div>
+                    );
+                  })}
+
+                  {restantes > 0 && (() => {
+                    const pos = posiciones[visibles.length];
+                    const r = radios[visibles.length];
+                    const flote = parametrosFlote('mas-burbujas');
+                    return (
+                      <div
+                        className="absolute rounded-full bg-white/10 border border-white/15 backdrop-blur-sm flex items-center justify-center text-white/70 font-semibold shrink-0 burbuja-flotante"
+                        style={{
+                          width: r * 2,
+                          height: r * 2,
+                          left: `calc(50% + ${pos.x}px - ${r}px)`,
+                          top: `calc(50% + ${pos.y}px - ${r}px)`,
+                          fontSize: r * 2 <= 36 ? 11 : 13,
+                          animationDuration: `${flote.duracion}s`,
+                          animationDelay: `${flote.retraso}s`,
+                          ...({
+                            '--fx': `${flote.fx}px`,
+                            '--fy': `${flote.fy}px`,
+                          } as React.CSSProperties),
+                        }}
+                      >
+                        +{restantes}
+                      </div>
+                    );
+                  })()}
+                </div>
+              </div>
+            );
+          })()}
           <div className="flex items-baseline gap-2">
             <span className="text-5xl font-bold tracking-tight tabular-nums leading-none">
               {subs.length}
             </span>
-            <p className="text-sm text-white/60">
+            <p className="text-lg text-white/70">
               {subs.length === 1 ? 'Suscripción' : 'Suscripciones'}
             </p>
           </div>
@@ -635,10 +937,10 @@ export default function Home() {
           </div>
           <div className="rounded-3xl p-4 bg-gradient-to-br from-slate-700/60 to-slate-800/60 border border-white/10">
             <p className="text-3xl font-bold leading-none mb-3 tracking-tight tabular-nums">
-              {formatCOP(totalEsteMes)}
+              {formatCOP(totalAnualProyectado)}
             </p>
             <p className="text-sm text-white/60 flex items-center gap-1.5">
-              <CalendarDays size={16} /> Este mes
+              <CalendarRange size={16} /> Total anual
             </p>
           </div>
         </div>
@@ -650,7 +952,7 @@ export default function Home() {
               Próximos pagos
             </h2>
             <div
-              className="no-scrollbar flex gap-3 overflow-x-auto snap-x snap-mandatory"
+              className="no-scrollbar flex gap-3 overflow-x-auto snap-x snap-mandatory pt-3 pr-3 -mt-3"
               style={{ scrollbarWidth: 'none' }}
             >
               {proximas.map((s) => {
@@ -662,39 +964,51 @@ export default function Home() {
                 return (
                   <div
                     key={s.id}
-                    className={`snap-start shrink-0 min-w-[190px] w-max rounded-3xl p-5 border overflow-hidden relative ${
-                      dias <= 0 ? 'border-red-500/20' : 'border-white/10'
-                    }`}
-                    style={{
-                      background: `radial-gradient(circle at 48px 48px, ${s.colorFondo}80, ${s.colorFondo}26 45%, transparent 75%)`,
-                    }}
+                    className="relative snap-start shrink-0 min-w-[190px] w-max"
                   >
+                    <div
+                      className={`rounded-3xl p-5 border overflow-hidden relative ${
+                        dias <= 0 ? 'border-red-500/20' : 'border-white/10'
+                      }`}
+                      style={{
+                        background: `radial-gradient(circle at 48px 48px, ${s.colorFondo}80, ${s.colorFondo}30 58%, transparent 96%)`,
+                      }}
+                    >
+                      <div className="flex items-center gap-4 mb-4">
+                        <LogoAvatar s={s} />
+                        <div>
+                          <p className="text-lg font-semibold whitespace-nowrap">{s.nombre}</p>
+                          <p className="text-lg font-semibold whitespace-nowrap text-white/70">
+                            {formatCOP(s.precio)} /{' '}
+                            {s.frecuencia === 'mensual' ? 'm' : s.frecuencia === 'anual' ? 'a' : 's'}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span className={`text-sm font-medium shrink-0 ${colores.texto}`}>
+                          {etiquetaFecha(fechaPago)}
+                        </span>
+                        <div className="flex-1 h-1 rounded-full bg-white/10 overflow-hidden">
+                          <div
+                            className={`h-full rounded-full ${colores.barra}`}
+                            style={{ width: `${progreso}%` }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Burbuja tipo notificación con el mes: flota fuera de
+                        la tarjeta (esquina superior derecha) en vez de vivir
+                        dentro del flujo de texto, para que nunca se
+                        sobreponga al nombre o al precio. */}
                     {otroMes && (
-                      <span className="absolute top-4 right-4 px-3 py-1 rounded-full bg-white/10 text-xs font-medium text-white/70">
-                        {etiquetaMes(fechaPago)}
-                      </span>
+                      <div className="absolute -top-2.5 -right-2.5 z-10">
+                        <span className="relative inline-flex items-center justify-center px-3 py-1.5 rounded-full bg-white text-black text-xs font-bold shadow-[0_2px_8px_rgba(0,0,0,0.4)] whitespace-nowrap">
+                          {etiquetaMes(fechaPago)}
+                        </span>
+                        <span className="absolute -bottom-1 right-4 w-2.5 h-2.5 bg-white rotate-45" />
+                      </div>
                     )}
-                    <div className="flex items-center gap-4 mb-4">
-                      <LogoAvatar s={s} />
-                      <div>
-                        <p className="text-lg font-semibold whitespace-nowrap">{s.nombre}</p>
-                        <p className="text-lg font-semibold whitespace-nowrap text-white/70">
-                          {formatCOP(s.precio)} /{' '}
-                          {s.frecuencia === 'mensual' ? 'm' : s.frecuencia === 'anual' ? 'a' : 's'}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <span className={`text-sm font-medium shrink-0 ${colores.texto}`}>
-                        {etiquetaFecha(fechaPago)}
-                      </span>
-                      <div className="flex-1 h-1 rounded-full bg-white/10 overflow-hidden">
-                        <div
-                          className={`h-full rounded-full ${colores.barra}`}
-                          style={{ width: `${progreso}%` }}
-                        />
-                      </div>
-                    </div>
                   </div>
                 );
               })}
@@ -766,19 +1080,6 @@ export default function Home() {
         )}
       </div>
 
-      {/* Barra de status bar difuminada, estilo nativo iOS: blur sólido y
-          parejo, sin degradado, sin borde, para que se sienta continuo */}
-      <div
-        className="fixed left-0 right-0 top-0 z-10 pointer-events-none"
-        style={{
-          height: 'env(safe-area-inset-top)',
-          backdropFilter: 'blur(2.8px) saturate(90%)',
-          WebkitBackdropFilter: 'blur(2.8px) saturate(90%)',
-          maskImage: 'linear-gradient(to bottom, black 85%, transparent 100%)',
-          WebkitMaskImage: 'linear-gradient(to bottom, black 85%, transparent 100%)',
-        }}
-      />
-
       {/* Difuminado estilo "glass" detrás del botón flotante: blur fuerte +
           saturación, con un desvanecido muy corto (casi de golpe) en el borde
           superior en vez de un degradado largo */}
@@ -786,8 +1087,8 @@ export default function Home() {
         className="fixed left-0 right-0 bottom-0 z-10 pointer-events-none"
         style={{
           height: 'calc(110px + env(safe-area-inset-bottom))',
-          backdropFilter: 'blur(2.8px) saturate(90%)',
-          WebkitBackdropFilter: 'blur(2.8px) saturate(90%)',
+          backdropFilter: 'blur(2.3px) saturate(90%)',
+          WebkitBackdropFilter: 'blur(2.3px) saturate(90%)',
           maskImage: 'linear-gradient(to top, black 85%, transparent 100%)',
           WebkitMaskImage: 'linear-gradient(to top, black 85%, transparent 100%)',
         }}
@@ -817,19 +1118,19 @@ export default function Home() {
             >
             {pasoModal === 'elegir' ? (
               <>
-                <div className="sticky top-0 z-10 px-6 pt-6 pb-4 bg-[#141416]">
+                <div ref={headerModalRef} className="sticky top-0 z-10 px-6 pt-6 pb-4 bg-[#141416]">
                   <div className="flex items-center justify-between mb-5">
                     <button
                       onClick={cerrarModal}
-                      className="w-9 h-9 rounded-full bg-white/5 flex items-center justify-center text-white/70 shrink-0"
+                      className="w-11 h-11 rounded-full bg-white/10 backdrop-blur-xl border border-white/15 flex items-center justify-center text-white/90 shrink-0 shadow-[0_8px_20px_-6px_rgba(0,0,0,0.5),inset_0_1px_0_rgba(255,255,255,0.3),inset_0_-1px_2px_rgba(0,0,0,0.2)] transition-transform duration-150 active:scale-90"
                       aria-label="Cerrar"
                     >
-                      <X size={16} />
+                      <X size={20} strokeWidth={2.25} />
                     </button>
                     <h3 className="text-xl font-semibold flex-1 text-center tracking-tight">
                       {editando ? 'Cambiar marca' : 'Añadir suscripción'}
                     </h3>
-                    <div className="w-9 shrink-0" />
+                    <div className="w-11 shrink-0" />
                   </div>
 
                   <div className="flex items-center gap-3 bg-white/5 border border-white/10 rounded-2xl px-4 py-3">
@@ -878,19 +1179,33 @@ export default function Home() {
                   </>
                 ) : (
                   <>
-                    <p className="text-white/40 text-sm font-medium mb-3">Populares</p>
+                    <p
+                      className="text-white/40 text-sm font-medium py-1.5 sticky bg-[#141416] z-[5]"
+                      style={{ top: alturaHeaderModal }}
+                    >
+                      Populares
+                    </p>
                     <div className="flex flex-col gap-1 -mx-2 mb-6">
                       {MARCAS_POPULARES.map((p, i) => (
                         <FilaMarca key={`pop-${p.nombre}-${i}`} marca={p} onClick={() => elegirMarca(p)} />
                       ))}
                     </div>
 
-                    <p className="text-white/40 text-sm font-medium mb-3">Todas las marcas</p>
-                    <div className="flex flex-col gap-1 -mx-2">
-                      {MARCAS_TODAS.map((p, i) => (
-                        <FilaMarca key={`todas-${p.nombre}-${i}`} marca={p} onClick={() => elegirMarca(p)} />
-                      ))}
-                    </div>
+                    {MARCAS_POR_LETRA.map(({ letra, marcas }) => (
+                      <div key={letra}>
+                        <p
+                          className="text-white/40 text-sm font-medium py-1.5 sticky bg-[#141416] z-[5]"
+                          style={{ top: alturaHeaderModal }}
+                        >
+                          {letra}
+                        </p>
+                        <div className="flex flex-col gap-1 -mx-2 mb-4">
+                          {marcas.map((p, i) => (
+                            <FilaMarca key={`todas-${letra}-${p.nombre}-${i}`} marca={p} onClick={() => elegirMarca(p)} />
+                          ))}
+                        </div>
+                      </div>
+                    ))}
                   </>
                 )}
                 </div>

@@ -33,7 +33,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="es" className={jakarta.variable}>
-        <body>{children}</body>
+      <body>{children}</body>
     </html>
   );
 }
