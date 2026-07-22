@@ -775,7 +775,8 @@ export default function Home() {
           height: 'env(safe-area-inset-top)',
           backdropFilter: 'blur(2.3px) saturate(90%)',
           WebkitBackdropFilter: 'blur(2.3px) saturate(90%)',
-          backgroundColor: 'rgba(14, 14, 16, 0.55)',
+          maskImage: 'linear-gradient(to bottom, black 85%, transparent 100%)',
+          WebkitMaskImage: 'linear-gradient(to bottom, black 85%, transparent 100%)',
         }}
       />
 
