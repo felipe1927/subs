@@ -61,6 +61,21 @@ const CATEGORIAS: { nombre: string; Icono: LucideIcon }[] = [
   { nombre: 'Otros', Icono: Package },
 ];
 
+// Color de fondo del cuadrito de ícono de cada categoría, en el modal de
+// selección (mismo lenguaje visual que los avatares de marcas).
+const COLORES_CATEGORIA: Record<string, string> = {
+  Streaming: '#DC2626',
+  Música: '#DB2777',
+  Videojuegos: '#7C3AED',
+  Productividad: '#059669',
+  'Inteligencia artificial': '#0284C7',
+  Educación: '#F59E0B',
+  Fitness: '#EF4444',
+  Seguridad: '#334155',
+  Noticias: '#475569',
+  Otros: '#57534E',
+};
+
 type Frecuencia = 'mensual' | 'anual' | 'semanal';
 
 type Suscripcion = {
@@ -429,7 +444,7 @@ function FilaMarca({ marca, onClick }: { marca: Marca; onClick: () => void }) {
         inicial={marca.nombre.charAt(0)}
         alt={`Logo de ${marca.nombre}`}
       />
-      <span className="flex-1 text-base">{marca.nombre}</span>
+      <span className="flex-1 text-lg">{marca.nombre}</span>
       <ChevronRight size={18} className="text-white/30 shrink-0" />
     </button>
   );
@@ -514,7 +529,7 @@ function FilaSuscripcion({
         <LogoAvatar s={s} size="w-16 h-16" textSize="text-2xl" />
         <div className="flex-1 min-w-0 flex items-center justify-between gap-3">
           <div className="min-w-0">
-            <p className="text-xl font-semibold truncate">{s.nombre}</p>
+            <p className="text-lg font-semibold truncate">{s.nombre}</p>
             <p className="text-white/50 text-lg">
               {formatCOP(s.precio)} / {freq === 'mensual' ? 'm' : freq === 'anual' ? 'a' : 's'}
             </p>
@@ -554,6 +569,28 @@ export default function Home() {
 
   const [modalAbierto, setModalAbierto] = useState(false);
 
+  // Controlan el montaje/desmontaje "liquid glass" del modal principal: al
+  // cerrar no se desmonta de inmediato, primero se marca `modalCerrando`
+  // para que corra la animación de salida y solo después (con el timeout
+  // de abajo) se saca del DOM. Lo mismo aplica al modal de Categoría.
+  const [modalMontado, setModalMontado] = useState(false);
+  const [modalCerrando, setModalCerrando] = useState(false);
+  const [categoriaMontada, setCategoriaMontada] = useState(false);
+  const [categoriaCerrando, setCategoriaCerrando] = useState(false);
+
+  // Mientras el modal está abierto, bloquea el scroll del fondo para que
+  // el modal se sienta realmente "fijo" en la pantalla (si el fondo se
+  // pudiera seguir desplazando, el modal parecería flotar sobre contenido
+  // que se mueve, en vez de quedar anclado por completo).
+  useEffect(() => {
+    if (!modalAbierto) return;
+    const overflowPrevio = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = overflowPrevio;
+    };
+  }, [modalAbierto]);
+
   // Mide en tiempo real la altura del header pegajoso del modal de
   // "Añadir suscripción" (título + buscador), para que los encabezados
   // de "Populares" y de cada letra (A, B, C...) se peguen justo debajo,
@@ -587,11 +624,16 @@ export default function Home() {
   );
   const [pasoModal, setPasoModal] = useState<'elegir' | 'detalles'>('elegir');
   const [cicloAbierto, setCicloAbierto] = useState(false);
+  const [cicloMontado, setCicloMontado] = useState(false);
+  const [cicloCerrando, setCicloCerrando] = useState(false);
   const [busqueda, setBusqueda] = useState('');
   const [addOn, setAddOn] = useState('');
   const [orden, setOrden] = useState<'proximos' | 'az' | 'barato' | 'caro'>('proximos');
   const [ordenAbierto, setOrdenAbierto] = useState(false);
+  const [ordenMontado, setOrdenMontado] = useState(false);
+  const [ordenCerrando, setOrdenCerrando] = useState(false);
   const [categoriaSel, setCategoriaSel] = useState(CATEGORIAS[0].nombre);
+  const [categoriaModalAbierta, setCategoriaModalAbierta] = useState(false);
   const [colorSel, setColorSel] = useState<{ bg: string; texto: string; icono?: string }>({
     bg: '#DC2626',
     texto: '#FFFFFF',
@@ -623,24 +665,91 @@ export default function Home() {
     setPasoModal('detalles');
   }
 
-  function ciclarCategoria() {
-    const i = CATEGORIAS.findIndex((c) => c.nombre === categoriaSel);
-    setCategoriaSel(CATEGORIAS[(i + 1) % CATEGORIAS.length].nombre);
+  // Duraciones de las animaciones de salida: deben coincidir con las
+  // definidas en @keyframes liquid-sheet-out / liquid-backdrop-out (más
+  // abajo), para que el desmontaje ocurra justo cuando termina de verse.
+  const DURACION_CIERRE_MODAL = 260;
+  const DURACION_CIERRE_CATEGORIA = 220;
+  const DURACION_CIERRE_POPUP = 160;
+
+  // Popup de "orden" (Próximos/A-Z/Barato/Caro): toca el botón para
+  // abrir/cerrar; al cerrar (desde el botón, el fondo, o al elegir una
+  // opción) siempre corre primero la animación de salida.
+  function toggleOrden() {
+    if (ordenAbierto) {
+      cerrarOrden();
+    } else {
+      setOrdenAbierto(true);
+      setOrdenMontado(true);
+      setOrdenCerrando(false);
+    }
+  }
+
+  function cerrarOrden() {
+    setOrdenCerrando(true);
+    window.setTimeout(() => {
+      setOrdenAbierto(false);
+      setOrdenMontado(false);
+      setOrdenCerrando(false);
+    }, DURACION_CIERRE_POPUP);
+  }
+
+  // Popup de "Ciclo de pago" (semanal/mensual/anual), mismo patrón.
+  function toggleCiclo() {
+    if (cicloAbierto) {
+      cerrarCiclo();
+    } else {
+      setCategoriaModalAbierta(false);
+      setCicloAbierto(true);
+      setCicloMontado(true);
+      setCicloCerrando(false);
+    }
+  }
+
+  function cerrarCiclo() {
+    setCicloCerrando(true);
+    window.setTimeout(() => {
+      setCicloAbierto(false);
+      setCicloMontado(false);
+      setCicloCerrando(false);
+    }, DURACION_CIERRE_POPUP);
   }
 
   function cerrarModal() {
-    setModalAbierto(false);
-    setPasoModal('elegir');
-    setBusqueda('');
-    setNombre('');
-    setPrecio('');
-    setFrecuencia('mensual');
-    setProximaFecha(new Date().toISOString().slice(0, 10));
-    setColorSel({ bg: '#DC2626', texto: '#FFFFFF', icono: undefined });
-    setAddOn('');
-    setCategoriaSel(CATEGORIAS[0].nombre);
-    setCicloAbierto(false);
-    setEditando(null);
+    setModalCerrando(true);
+    window.setTimeout(() => {
+      setModalAbierto(false);
+      setModalMontado(false);
+      setModalCerrando(false);
+      setPasoModal('elegir');
+      setBusqueda('');
+      setNombre('');
+      setPrecio('');
+      setFrecuencia('mensual');
+      setProximaFecha(new Date().toISOString().slice(0, 10));
+      setColorSel({ bg: '#DC2626', texto: '#FFFFFF', icono: undefined });
+      setAddOn('');
+      setCategoriaSel(CATEGORIAS[0].nombre);
+      setCicloAbierto(false);
+      setCicloMontado(false);
+      setCicloCerrando(false);
+      setCategoriaModalAbierta(false);
+      setCategoriaMontada(false);
+      setCategoriaCerrando(false);
+      setEditando(null);
+    }, DURACION_CIERRE_MODAL);
+  }
+
+  // Cierre animado del modal de Categoría (botón X, tocar el fondo, o
+  // elegir una categoría): siempre pasa por acá para que nunca se salte
+  // la animación de salida.
+  function cerrarCategoria() {
+    setCategoriaCerrando(true);
+    window.setTimeout(() => {
+      setCategoriaModalAbierta(false);
+      setCategoriaMontada(false);
+      setCategoriaCerrando(false);
+    }, DURACION_CIERRE_CATEGORIA);
   }
 
   function abrirEdicion(s: Suscripcion) {
@@ -654,6 +763,8 @@ export default function Home() {
     setColorSel({ bg: s.colorFondo, texto: s.colorTexto, icono: s.icono });
     setPasoModal('detalles');
     setModalAbierto(true);
+    setModalMontado(true);
+    setModalCerrando(false);
   }
 
   useEffect(() => {
@@ -723,8 +834,10 @@ export default function Home() {
   const etiquetaOrden =
     orden === 'az' ? 'A-Z' : orden === 'barato' ? 'Barato' : orden === 'caro' ? 'Caro' : 'Próximos';
 
+  const precioValido = precio.trim() !== '' && Number(precio) > 0;
+
   function guardarSuscripcion() {
-    if (!nombre.trim() || !precio) return;
+    if (!nombre.trim() || !precioValido) return;
 
     if (editando) {
       setSubs((prev) =>
@@ -1030,16 +1143,20 @@ export default function Home() {
         <div className="flex items-center justify-between mb-4 relative">
           <h2 className="text-2xl font-semibold tracking-tight">Todas las suscripciones</h2>
           <button
-            onClick={() => setOrdenAbierto((v) => !v)}
+            onClick={toggleOrden}
             className="flex items-center gap-1.5 px-4 py-2 rounded-full bg-white/5 border border-white/10 text-sm text-white/70"
           >
             {etiquetaOrden} <ArrowUpDown size={14} />
           </button>
 
-          {ordenAbierto && (
+          {ordenMontado && (
             <>
-              <div className="fixed inset-0 z-10" onClick={() => setOrdenAbierto(false)} />
-              <div className="absolute right-0 top-[calc(100%+4px)] z-20 bg-[#1c1c1f] border border-white/10 rounded-2xl overflow-hidden shadow-2xl min-w-[150px]">
+              <div className="fixed inset-0 z-10" onClick={cerrarOrden} />
+              <div
+                className={`absolute right-0 top-[calc(100%+4px)] z-20 bg-[#1c1c1f] border border-white/10 rounded-2xl overflow-hidden shadow-2xl min-w-[150px] ${
+                  ordenCerrando ? 'liquid-popup-out' : 'liquid-popup-in'
+                }`}
+              >
                 {(
                   [
                     { valor: 'proximos', etiqueta: 'Próximos' },
@@ -1052,7 +1169,7 @@ export default function Home() {
                     key={o.valor}
                     onClick={() => {
                       setOrden(o.valor);
-                      setOrdenAbierto(false);
+                      cerrarOrden();
                     }}
                     className={`w-full flex items-center justify-between gap-3 px-4 py-3 text-sm text-left active:bg-white/10 transition ${
                       orden === o.valor ? 'text-white' : 'text-white/60'
@@ -1112,7 +1229,11 @@ export default function Home() {
         style={{ bottom: 'calc(1.5rem + env(safe-area-inset-bottom))' }}
       >
         <button
-          onClick={() => setModalAbierto(true)}
+          onClick={() => {
+            setModalAbierto(true);
+            setModalMontado(true);
+            setModalCerrando(false);
+          }}
           className="relative bg-white text-black font-semibold text-lg px-8 py-4 rounded-full flex items-center gap-2 shadow-[0_20px_40px_-8px_rgba(0,0,0,0.55),0_0_0_1px_rgba(255,255,255,0.08),inset_0_1px_0_rgba(255,255,255,1),inset_0_-2px_4px_rgba(0,0,0,0.06)] transition-all duration-200 ease-out active:scale-[0.96] active:brightness-95"
         >
           <Plus size={22} />
@@ -1120,16 +1241,26 @@ export default function Home() {
         </button>
       </div>
 
-      {/* Modal para agregar */}
-      {modalAbierto && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-end sm:items-center justify-center z-50 p-0 sm:p-5">
-          <div className="animate-in w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl border border-white/10 overflow-hidden">
+      {/* Modal para agregar: pantalla completa, siempre pegado arriba del
+          todo (no una tarjeta flotante), rellenando con el color de fondo
+          de la app aunque el contenido no llegue hasta abajo */}
+      {modalMontado && (
+        <div
+          className={`fixed inset-0 bg-black/70 backdrop-blur-sm flex items-end sm:items-center justify-center z-50 p-0 sm:p-5 ${
+            modalCerrando ? 'liquid-backdrop-out' : 'liquid-backdrop-in'
+          }`}
+        >
+          <div
+            className={`w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl border border-white/10 overflow-hidden ${
+              modalCerrando ? 'liquid-sheet-out' : 'liquid-sheet-in'
+            }`}
+          >
             <div
               className="bg-[#141416] max-h-[90vh] overflow-y-auto"
               style={{ paddingBottom: 'calc(1.5rem + env(safe-area-inset-bottom))' }}
             >
             {pasoModal === 'elegir' ? (
-              <>
+              <div key="paso-elegir" className="liquid-step-in">
                 <div ref={headerModalRef} className="sticky top-0 z-10 px-6 pt-6 pb-4 bg-[#141416]">
                   <div className="flex items-center justify-between mb-5">
                     <button
@@ -1221,37 +1352,44 @@ export default function Home() {
                   </>
                 )}
                 </div>
-              </>
+              </div>
             ) : (
-              <>
-                <div
-                  className="px-6 pt-6 pb-8 relative overflow-hidden"
-                  style={{
-                    background: `radial-gradient(ellipse closest-side at 50% 58%, ${colorSel.bg}cc, ${colorSel.bg}55 55%, transparent 100%)`,
-                  }}
-                >
-                  <div className="flex items-center justify-between mb-2">
-                    <button
-                      onClick={() => setPasoModal('elegir')}
-                      className="w-9 h-9 rounded-full bg-white/10 flex items-center justify-center text-white/80 shrink-0"
-                      aria-label="Volver"
-                    >
-                      <ArrowLeft size={16} />
-                    </button>
-                    <h3 className="text-lg font-semibold flex-1 text-center tracking-tight">
-                      {editando ? 'Editar detalles' : 'Añadir detalles'}
-                    </h3>
-                    <button
-                      onClick={guardarSuscripcion}
-                      disabled={!nombre.trim() || !precio}
-                      className="w-9 h-9 rounded-full bg-white/15 flex items-center justify-center text-white shrink-0 disabled:opacity-30 disabled:cursor-not-allowed transition"
-                      aria-label="Guardar"
-                    >
-                      <Check size={18} />
-                    </button>
-                  </div>
+              <div key="paso-detalles" className="liquid-step-in">
+                <div className="relative overflow-hidden">
+                  {/* Resplandor de fondo: parte del centro donde está el
+                      logo y se extiende hacia abajo cubriendo casi todo
+                      el paso de detalles, no solo el encabezado. */}
+                  <div
+                    className="absolute inset-0 pointer-events-none"
+                    style={{
+                      background: `radial-gradient(ellipse 130% 65% at 50% 20%, ${colorSel.bg}e6 0%, ${colorSel.bg}99 25%, ${colorSel.bg}4d 50%, ${colorSel.bg}1a 72%, transparent 90%)`,
+                      opacity: 0.6,
+                    }}
+                  />
 
-                  <div className="flex justify-center mt-4">
+                  <div className="px-6 pt-6 pb-8 relative">
+                    <div className="flex items-center justify-between mb-2">
+                      <button
+                        onClick={() => setPasoModal('elegir')}
+                        className="w-11 h-11 rounded-full bg-white/10 backdrop-blur-xl border border-white/15 flex items-center justify-center text-white/90 shrink-0 shadow-[0_8px_20px_-6px_rgba(0,0,0,0.5),inset_0_1px_0_rgba(255,255,255,0.3),inset_0_-1px_2px_rgba(0,0,0,0.2)] transition-transform duration-150 active:scale-90"
+                        aria-label="Volver"
+                      >
+                        <ArrowLeft size={18} />
+                      </button>
+                      <h3 className="text-lg font-semibold flex-1 text-center tracking-tight">
+                        {editando ? 'Editar detalles' : 'Añadir detalles'}
+                      </h3>
+                      <button
+                        onClick={guardarSuscripcion}
+                        disabled={!nombre.trim() || !precioValido}
+                        className="w-11 h-11 rounded-full bg-white/15 backdrop-blur-xl border border-white/15 flex items-center justify-center text-white shrink-0 shadow-[0_8px_20px_-6px_rgba(0,0,0,0.5),inset_0_1px_0_rgba(255,255,255,0.3),inset_0_-1px_2px_rgba(0,0,0,0.2)] transition-transform duration-150 active:scale-90 disabled:opacity-30 disabled:cursor-not-allowed disabled:active:scale-100"
+                        aria-label="Guardar"
+                      >
+                        <Check size={20} />
+                      </button>
+                    </div>
+
+                    <div className="flex justify-center mt-4">
                     <div className="relative">
                       <AvatarImagen
                         src={colorSel.icono}
@@ -1266,10 +1404,10 @@ export default function Home() {
                       />
                       <button
                         onClick={() => setPasoModal('elegir')}
-                        className="absolute -bottom-1 -right-1 w-9 h-9 rounded-full bg-black/80 border border-white/20 flex items-center justify-center"
+                        className="absolute -bottom-1 -right-1 w-11 h-11 rounded-full bg-black/40 backdrop-blur-xl border border-white/20 flex items-center justify-center shadow-[0_8px_20px_-6px_rgba(0,0,0,0.5),inset_0_1px_0_rgba(255,255,255,0.3),inset_0_-1px_2px_rgba(0,0,0,0.2)] transition-transform duration-150 active:scale-90"
                         aria-label="Cambiar marca"
                       >
-                        <Pencil size={14} className="text-white" />
+                        <Pencil size={16} className="text-white" />
                       </button>
                     </div>
                   </div>
@@ -1280,12 +1418,9 @@ export default function Home() {
                   <div className="bg-white/5 border border-white/10 rounded-2xl overflow-hidden">
                     <div className="flex items-center justify-between py-3.5 px-4 border-b border-white/10">
                       <span className="text-white/60 text-base shrink-0">Nombre</span>
-                      <input
-                        value={nombre}
-                        onChange={(e) => setNombre(e.target.value)}
-                        placeholder="Nombre del servicio"
-                        className="flex-1 ml-4 bg-transparent text-right outline-none text-white text-base placeholder:text-white/30"
-                      />
+                      <span className="flex-1 ml-4 text-right text-white text-base truncate select-none">
+                        {nombre.trim() || 'Sin nombre'}
+                      </span>
                     </div>
                     <div className="flex items-center justify-between py-3.5 px-4">
                       <span className="text-white/60 text-base shrink-0">Add-on</span>
@@ -1300,16 +1435,27 @@ export default function Home() {
 
                   {/* Costo, moneda, ciclo, fecha */}
                   <div className="bg-white/5 border border-white/10 rounded-2xl">
-                    <div className="flex items-center justify-between py-3.5 px-4 border-b border-white/10">
+                    <div
+                      className={`flex items-center justify-between py-3.5 px-4 border-b ${
+                        precio !== '' && !precioValido ? 'border-red-500/30' : 'border-white/10'
+                      }`}
+                    >
                       <span className="text-white/60 text-base shrink-0">Costo</span>
                       <input
                         value={precio}
                         onChange={(e) => setPrecio(e.target.value.replace(/\D/g, ''))}
                         inputMode="numeric"
                         placeholder="0"
-                        className="w-28 bg-transparent text-right outline-none text-white text-base placeholder:text-white/30"
+                        className={`w-28 bg-transparent text-right outline-none text-base placeholder:text-white/30 ${
+                          precio !== '' && !precioValido ? 'text-red-400' : 'text-white'
+                        }`}
                       />
                     </div>
+                    {precio !== '' && !precioValido && (
+                      <p className="text-red-400 text-xs px-4 pt-2 -mb-1">
+                        El costo debe ser mayor a $0.
+                      </p>
+                    )}
                     <div className="flex items-center justify-between py-3.5 px-4 border-b border-white/10">
                       <span className="text-white/60 text-base shrink-0">Moneda</span>
                       <span className="text-white/50 text-base flex items-center gap-1.5">
@@ -1336,7 +1482,7 @@ export default function Home() {
                     </div>
                     <div className="relative border-b border-white/10">
                       <button
-                        onClick={() => setCicloAbierto((v) => !v)}
+                        onClick={toggleCiclo}
                         className="w-full flex items-center justify-between py-3.5 px-4"
                       >
                         <span className="text-white/60 text-base shrink-0">Ciclo de pago</span>
@@ -1346,19 +1492,23 @@ export default function Home() {
                         </span>
                       </button>
 
-                      {cicloAbierto && (
+                      {cicloMontado && (
                         <>
                           <div
                             className="fixed inset-0 z-10"
-                            onClick={() => setCicloAbierto(false)}
+                            onClick={cerrarCiclo}
                           />
-                          <div className="absolute right-4 top-[calc(100%+4px)] z-20 bg-[#1c1c1f] border border-white/10 rounded-2xl overflow-hidden shadow-2xl min-w-[150px]">
+                          <div
+                            className={`absolute right-4 top-[calc(100%+4px)] z-20 bg-[#1c1c1f] border border-white/10 rounded-2xl overflow-hidden shadow-2xl min-w-[150px] ${
+                              cicloCerrando ? 'liquid-popup-out' : 'liquid-popup-in'
+                            }`}
+                          >
                             {(['semanal', 'mensual', 'anual'] as Frecuencia[]).map((f) => (
                               <button
                                 key={f}
                                 onClick={() => {
                                   setFrecuencia(f);
-                                  setCicloAbierto(false);
+                                  cerrarCiclo();
                                 }}
                                 className={`w-full flex items-center justify-between gap-3 px-4 py-3 text-base capitalize text-left active:bg-white/10 transition ${
                                   frecuencia === f ? 'text-white' : 'text-white/60'
@@ -1388,7 +1538,11 @@ export default function Home() {
                   {/* Categoría */}
                   <div className="bg-white/5 border border-white/10 rounded-2xl overflow-hidden mb-2">
                     <button
-                      onClick={ciclarCategoria}
+                      onClick={() => {
+                        setCategoriaModalAbierta(true);
+                        setCategoriaMontada(true);
+                        setCategoriaCerrando(false);
+                      }}
                       className="w-full flex items-center justify-between py-3.5 px-4"
                     >
                       <span className="text-white/60 text-base shrink-0">Categoría</span>
@@ -1399,7 +1553,7 @@ export default function Home() {
                           return <IconoCategoria size={16} className="text-white/60" />;
                         })()}
                         {categoriaSel}
-                        <ChevronsUpDown size={14} className="text-white/40" />
+                        <ChevronRight size={16} className="text-white/40" />
                       </span>
                     </button>
                   </div>
@@ -1417,8 +1571,73 @@ export default function Home() {
                     </button>
                   )}
                 </div>
-              </>
+                </div>
+              </div>
             )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Categoría: bottom-sheet independiente que se abre encima
+          del modal de detalles (mismo lenguaje visual: manija arriba,
+          título + botón de cerrar, filas con ícono en cuadrito de color) */}
+      {categoriaMontada && (
+        <div
+          className={`fixed inset-0 z-[110] flex items-end justify-center ${
+            categoriaCerrando ? 'liquid-backdrop-out' : 'liquid-backdrop-in'
+          }`}
+        >
+          <div
+            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            onClick={cerrarCategoria}
+          />
+          <div
+            className={`relative w-full max-w-md rounded-t-3xl border border-white/10 border-b-0 bg-[#1c1c1f] max-h-[75vh] flex flex-col overflow-hidden ${
+              categoriaCerrando ? 'liquid-sheet-out' : 'liquid-sheet-in'
+            }`}
+            style={{ paddingBottom: 'calc(0.5rem + env(safe-area-inset-bottom))' }}
+          >
+            <div className="flex justify-center pt-3 pb-1 shrink-0">
+              <div className="w-9 h-1 rounded-full bg-white/20" />
+            </div>
+            <div className="flex items-center justify-between px-5 pt-2 pb-4 shrink-0">
+              <h3 className="text-xl font-semibold tracking-tight">Categoría</h3>
+              <button
+                onClick={cerrarCategoria}
+                className="w-9 h-9 rounded-full bg-white/10 backdrop-blur-xl border border-white/15 flex items-center justify-center text-white/90 shrink-0 shadow-[0_8px_20px_-6px_rgba(0,0,0,0.5),inset_0_1px_0_rgba(255,255,255,0.3),inset_0_-1px_2px_rgba(0,0,0,0.2)] transition-transform duration-150 active:scale-90"
+                aria-label="Cerrar"
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto px-3 pb-2">
+              {CATEGORIAS.map((c) => {
+                const seleccionada = categoriaSel === c.nombre;
+                return (
+                  <button
+                    key={c.nombre}
+                    onClick={() => {
+                      setCategoriaSel(c.nombre);
+                      cerrarCategoria();
+                    }}
+                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-2xl text-left transition ${
+                      seleccionada ? 'bg-white/10' : 'active:bg-white/5'
+                    }`}
+                  >
+                    <span className="w-5 shrink-0 flex items-center justify-center">
+                      {seleccionada && <Check size={16} className="text-violet-400" />}
+                    </span>
+                    <span
+                      className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
+                      style={{ backgroundColor: COLORES_CATEGORIA[c.nombre] ?? '#3F3F46' }}
+                    >
+                      <c.Icono size={18} className="text-white" />
+                    </span>
+                    <span className="flex-1 text-white text-base">{c.nombre}</span>
+                  </button>
+                );
+              })}
             </div>
           </div>
         </div>
@@ -1427,6 +1646,146 @@ export default function Home() {
       <style jsx>{`
         .no-scrollbar::-webkit-scrollbar {
           display: none;
+        }
+
+        /* ---------- "Liquid glass": fundido + escape con blur y rebote ---------- */
+
+        /* Fondo oscuro detrás del modal: solo cross-fade de opacidad, el
+           blur del propio fondo (backdrop-blur-sm) ya queda fijo por Tailwind. */
+        .liquid-backdrop-in {
+          animation: liquid-backdrop-in 300ms cubic-bezier(0.22, 1, 0.36, 1) both;
+        }
+        .liquid-backdrop-out {
+          animation: liquid-backdrop-out 220ms cubic-bezier(0.4, 0, 1, 1) both;
+        }
+        @keyframes liquid-backdrop-in {
+          from {
+            opacity: 0;
+          }
+          to {
+            opacity: 1;
+          }
+        }
+        @keyframes liquid-backdrop-out {
+          from {
+            opacity: 1;
+          }
+          to {
+            opacity: 0;
+          }
+        }
+
+        /* La "hoja" del modal (bottom-sheet): entra desde abajo, difuminada
+           y encogida, con una desaceleración suave y directa -- SIN rebote,
+           para que se sienta como un modal serio que "aparece", no como un
+           elemento que salta. Al salir hace el camino inverso pero más
+           rápido, como si se "derritiera" hacia adentro. */
+        .liquid-sheet-in {
+          animation: liquid-sheet-in 420ms cubic-bezier(0.22, 1, 0.36, 1) both;
+        }
+        .liquid-sheet-out {
+          animation: liquid-sheet-out 240ms cubic-bezier(0.4, 0, 1, 1) both;
+        }
+        @keyframes liquid-sheet-in {
+          0% {
+            opacity: 0;
+            transform: scale(0.94) translateY(22px);
+            filter: blur(14px);
+          }
+          100% {
+            opacity: 1;
+            transform: scale(1) translateY(0);
+            filter: blur(0px);
+          }
+        }
+        @keyframes liquid-sheet-out {
+          0% {
+            opacity: 1;
+            transform: scale(1) translateY(0);
+            filter: blur(0px);
+          }
+          100% {
+            opacity: 0;
+            transform: scale(0.94) translateY(16px);
+            filter: blur(12px);
+          }
+        }
+
+        /* Cambio de paso (elegir <-> detalles): cada paso se vuelve a
+           montar (por su prop "key"), así que esta animación de entrada
+           corre en ambas direcciones -- el paso nuevo "condensa" desde
+           un leve blur, sin rebote (mismo criterio que el resto de los
+           modales). */
+        .liquid-step-in {
+          animation: liquid-step-in 360ms cubic-bezier(0.22, 1, 0.36, 1) both;
+        }
+        @keyframes liquid-step-in {
+          0% {
+            opacity: 0;
+            transform: scale(0.97);
+            filter: blur(9px);
+          }
+          100% {
+            opacity: 1;
+            transform: scale(1);
+            filter: blur(0px);
+          }
+        }
+
+        /* Popups de lista (orden, ciclo de pago): estos SÍ llevan el rebote
+           completo -- crecen desde la esquina donde está su botón, con
+           blur y un pequeño "overshoot" de escala antes de asentarse. */
+        .liquid-popup-in {
+          animation: liquid-popup-in 320ms cubic-bezier(0.22, 1, 0.36, 1) both;
+          transform-origin: top right;
+        }
+        .liquid-popup-out {
+          animation: liquid-popup-out 160ms cubic-bezier(0.4, 0, 1, 1) both;
+          transform-origin: top right;
+        }
+        @keyframes liquid-popup-in {
+          0% {
+            opacity: 0;
+            transform: scale(0.8) translateY(-8px);
+            filter: blur(10px);
+          }
+          50% {
+            opacity: 1;
+            filter: blur(0px);
+          }
+          72% {
+            transform: scale(1.045) translateY(1px);
+          }
+          100% {
+            opacity: 1;
+            transform: scale(1) translateY(0);
+            filter: blur(0px);
+          }
+        }
+        @keyframes liquid-popup-out {
+          0% {
+            opacity: 1;
+            transform: scale(1) translateY(0);
+            filter: blur(0px);
+          }
+          100% {
+            opacity: 0;
+            transform: scale(0.88) translateY(-6px);
+            filter: blur(8px);
+          }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+          .liquid-backdrop-in,
+          .liquid-backdrop-out,
+          .liquid-sheet-in,
+          .liquid-sheet-out,
+          .liquid-step-in,
+          .liquid-popup-in,
+          .liquid-popup-out {
+            animation-duration: 1ms;
+            animation-iteration-count: 1;
+          }
         }
       `}</style>
     </main>

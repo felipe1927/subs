@@ -29,7 +29,7 @@ export type Marca = {
 
 export const POPULARES: Marca[] = [
   // 🎬 Streaming de video (películas y series)
-  { nombre: 'Netflix', bg: '#831010', texto: '#000000', icono: '/iconos/netflix.png', popular: true },
+  { nombre: 'Netflix', bg: '#db0000', texto: '#000000', icono: '/iconos/netflix.png', popular: true },
   { nombre: 'Disney+', bg: '#0C1836', texto: '#FFFFFF', icono: '/iconos/disneyplus.png', popular: true },
   { nombre: 'Max (HBO Max)', bg: '#002BE7', texto: '#FFFFFF', icono: '/iconos/max.png', popular: true },
   { nombre: 'Amazon Prime Video', bg: '#1F2E4A', texto: '#00A8E1', icono: '/iconos/amazonprimevideo.png', popular: true },
