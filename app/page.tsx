@@ -92,19 +92,7 @@ type Suscripcion = {
   categoria?: string;
 };
 
-const SEED: Suscripcion[] = [
-  {
-    id: 'netflix',
-    nombre: 'Netflix',
-    precio: 29900,
-    frecuencia: 'mensual',
-    proximaFecha: new Date().toISOString().slice(0, 10),
-    colorFondo: '#000000',
-    colorTexto: '#E50914',
-    inicial: 'N',
-    icono: '/iconos/netflix.png',
-  },
-];
+const SEED: Suscripcion[] = [];
 
 const STORAGE_KEY = 'mis-suscripciones-v1';
 
@@ -381,8 +369,9 @@ function AvatarImagen({
         <img
           src={src}
           alt={alt}
-          className="w-full h-full object-cover"
+          className="w-full h-full object-cover select-none"
           loading="lazy"
+          draggable={false}
           onError={() => setError(true)}
         />
       </div>
@@ -457,10 +446,14 @@ function FilaSuscripcion({
   s,
   freq,
   onEditar,
+  abiertaId,
+  setAbiertaId,
 }: {
   s: Suscripcion;
   freq: Frecuencia;
   onEditar: (s: Suscripcion) => void;
+  abiertaId: string | null;
+  setAbiertaId: (valor: string | null | ((actual: string | null) => string | null)) => void;
 }) {
   const [offset, setOffset] = useState(0);
   const [arrastrando, setArrastrando] = useState(false);
@@ -471,9 +464,21 @@ function FilaSuscripcion({
   const progreso = progresoRestante(dias);
   const colores = coloresUrgencia(dias);
 
+  // Si se abrió (o se cerró desde afuera) el swipe de OTRA fila, esta se
+  // desliza de vuelta a su posición normal: solo una fila puede quedar
+  // abierta a la vez.
+  useEffect(() => {
+    if (abiertaId !== s.id) {
+      setOffset(0);
+    }
+  }, [abiertaId, s.id]);
+
   function onPointerDown(e: PointerEvent) {
     inicioRef.current = { x: e.clientX, offsetInicio: offset };
     setArrastrando(true);
+    // Al primer toque, esta pasa a ser "la fila activa": si había otra
+    // abierta, su propio efecto de arriba la cierra de inmediato.
+    setAbiertaId(s.id);
     (e.target as HTMLElement).setPointerCapture(e.pointerId);
   }
 
@@ -488,7 +493,14 @@ function FilaSuscripcion({
     if (!inicioRef.current) return;
     inicioRef.current = null;
     setArrastrando(false);
-    setOffset((actual) => (actual < -ANCHO_BOTON_EDITAR / 2 ? -ANCHO_BOTON_EDITAR : 0));
+    setOffset((actual) => {
+      const nuevo = actual < -ANCHO_BOTON_EDITAR / 2 ? -ANCHO_BOTON_EDITAR : 0;
+      setAbiertaId((idActual) => {
+        if (nuevo !== 0) return s.id;
+        return idActual === s.id ? null : idActual;
+      });
+      return nuevo;
+    });
   }
 
   const progresoSwipe = Math.min(1, Math.abs(offset) / ANCHO_BOTON_EDITAR);
@@ -500,6 +512,7 @@ function FilaSuscripcion({
           <button
             onClick={() => {
               setOffset(0);
+              setAbiertaId((idActual) => (idActual === s.id ? null : idActual));
               onEditar(s);
             }}
             style={{
@@ -568,6 +581,102 @@ export default function Home() {
   }, []);
 
   const [modalAbierto, setModalAbierto] = useState(false);
+
+  // Controla cuál fila (por id) tiene el swipe-to-edit abierto: solo una a
+  // la vez. Se lo pasamos a cada FilaSuscripcion para que se cierren entre
+  // sí automáticamente.
+  const [filaAbiertaId, setFilaAbiertaId] = useState<string | null>(null);
+
+  // ---------- Rebote "liquid glass" en los bordes del scroll principal ----------
+  // Cuando el usuario jala con el dedo más allá del tope o del final de la
+  // página (scroll tosco), en vez de dejar que el navegador haga su rebote
+  // nativo (que en Android ni existe), tomamos el control: el contenido se
+  // desplaza siguiendo el dedo con resistencia tipo goma elástica y un leve
+  // blur, y al soltar se dispara la animación de rebote de resorte.
+  const contenidoPrincipalRef = useRef<HTMLDivElement>(null);
+  const [pullOffset, setPullOffset] = useState(0);
+  const [pullConTransicion, setPullConTransicion] = useState(false);
+  const pullEstadoRef = useRef<{ y: number; jalando: boolean; borde: 'arriba' | 'abajo' | null } | null>(
+    null
+  );
+
+  useEffect(() => {
+    const el = contenidoPrincipalRef.current;
+    if (!el) return;
+
+    const enElTope = () => window.scrollY <= 0;
+    const enElFondo = () =>
+      window.scrollY + window.innerHeight >= document.documentElement.scrollHeight - 1;
+
+    function onTouchStart(e: TouchEvent) {
+      pullEstadoRef.current = { y: e.touches[0].clientY, jalando: false, borde: null };
+    }
+
+    function onTouchMove(e: TouchEvent) {
+      const estado = pullEstadoRef.current;
+      if (!estado) return;
+      const deltaY = e.touches[0].clientY - estado.y;
+
+      if (!estado.jalando) {
+        // Recién decidimos si esto es un "jalón" en el borde en el primer
+        // movimiento con intención clara, para no activarnos por accidente
+        // en medio de un scroll normal.
+        if (deltaY > 6 && enElTope()) {
+          estado.jalando = true;
+          estado.borde = 'arriba';
+        } else if (deltaY < -6 && enElFondo()) {
+          estado.jalando = true;
+          estado.borde = 'abajo';
+        } else {
+          return;
+        }
+      }
+
+      // Si el dedo se devuelve hacia el lado "normal" del scroll, soltamos
+      // el control y dejamos que el navegador siga con su scroll de siempre.
+      if ((estado.borde === 'arriba' && deltaY <= 0) || (estado.borde === 'abajo' && deltaY >= 0)) {
+        estado.jalando = false;
+        setPullConTransicion(false);
+        setPullOffset(0);
+        return;
+      }
+
+      // Evita que el navegador intente su propio rebote nativo mientras
+      // nosotros dibujamos el nuestro.
+      e.preventDefault();
+
+      // Resistencia tipo goma: entre más se jala, menos avanza el visual
+      // (nunca llega a moverse 1:1 con el dedo, ni se pasa de un tope).
+      const MAX_VISUAL_PX = 46;
+      const SUAVIZADO = 90;
+      const magnitud = Math.abs(deltaY);
+      const visual = MAX_VISUAL_PX * (1 - 1 / (magnitud / SUAVIZADO + 1));
+
+      setPullConTransicion(false);
+      setPullOffset(estado.borde === 'arriba' ? visual : -visual);
+    }
+
+    function onTouchEnd() {
+      const estado = pullEstadoRef.current;
+      pullEstadoRef.current = null;
+      if (estado?.jalando) {
+        setPullConTransicion(true);
+        setPullOffset(0);
+      }
+    }
+
+    el.addEventListener('touchstart', onTouchStart, { passive: true });
+    el.addEventListener('touchmove', onTouchMove, { passive: false });
+    el.addEventListener('touchend', onTouchEnd, { passive: true });
+    el.addEventListener('touchcancel', onTouchEnd, { passive: true });
+
+    return () => {
+      el.removeEventListener('touchstart', onTouchStart);
+      el.removeEventListener('touchmove', onTouchMove);
+      el.removeEventListener('touchend', onTouchEnd);
+      el.removeEventListener('touchcancel', onTouchEnd);
+    };
+  }, []);
 
   // Controlan el montaje/desmontaje "liquid glass" del modal principal: al
   // cerrar no se desmonta de inmediato, primero se marca `modalCerrando`
@@ -882,6 +991,13 @@ export default function Home() {
     setSubs((prev) => prev.filter((s) => s.id !== id));
   }
 
+  // Colores de resplandor del cluster de bienvenida: se toman del atributo
+  // `bg` (color de fondo) que ya tiene cada marca en marcas.ts, en vez de un
+  // color fijo, para que el brillo detrás de cada ícono sea el suyo propio.
+  const bgSpotify = POPULARES.find((m) => m.nombre === 'Spotify')?.bg ?? '#1DB954';
+  const bgDisney = POPULARES.find((m) => m.nombre === 'Disney+')?.bg ?? '#0C1836';
+  const bgNetflix = POPULARES.find((m) => m.nombre === 'Netflix')?.bg ?? '#db0000';
+
   return (
     <main
       className="min-h-screen text-white overscroll-y-contain antialiased"
@@ -904,7 +1020,70 @@ export default function Home() {
         }}
       />
 
-      <div className="max-w-md mx-auto px-5 pt-8">
+      <div
+        ref={contenidoPrincipalRef}
+        className="max-w-md mx-auto px-5 pt-8"
+        style={{
+          transform: pullOffset !== 0 ? `translateY(${pullOffset}px)` : undefined,
+          filter: pullOffset !== 0 ? `blur(${Math.min(Math.abs(pullOffset) / 14, 3).toFixed(2)}px)` : undefined,
+          transition: pullConTransicion
+            ? 'transform 520ms cubic-bezier(0.34, 1.56, 0.64, 1), filter 420ms ease-out'
+            : 'none',
+          willChange: 'transform, filter',
+        }}
+        onTransitionEnd={() => setPullConTransicion(false)}
+      >
+        {subs.length === 0 ? (
+          <div className="min-h-[65vh] flex flex-col items-center justify-center text-center px-6">
+            {/* Cluster de íconos: Spotify atrás-izquierda inclinado, Disney+
+                atrás-derecha inclinado al otro lado, y Netflix al
+                frente-centro, derecho y más grande, encimado sobre los
+                otros dos. Cada uno con un resplandor MUY sutil de su propio
+                color de marca (tomado de `bg` en marcas.ts). */}
+            <div className="relative mb-8" style={{ width: 205, height: 172 }}>
+              <img
+                src="/iconos/spotify.png"
+                alt="Spotify"
+                className="absolute w-24 h-24 rounded-[22px] object-cover select-none"
+                draggable={false}
+                style={{
+                  left: 5,
+                  top: 10,
+                  transform: 'rotate(-8deg)',
+                  boxShadow: `0 0 18px 1px ${bgSpotify}30, 0 10px 24px -6px rgba(0,0,0,0.5)`,
+                }}
+              />
+              <img
+                src="/iconos/disneyplus.png"
+                alt="Disney+"
+                className="absolute w-24 h-24 rounded-[22px] object-cover select-none"
+                draggable={false}
+                style={{
+                  right: 5,
+                  top: 0,
+                  transform: 'rotate(8deg)',
+                  boxShadow: `0 0 18px 1px ${bgDisney}30, 0 10px 24px -6px rgba(0,0,0,0.5)`,
+                }}
+              />
+              <img
+                src="/iconos/netflix.png"
+                alt="Netflix"
+                className="absolute w-28 h-28 rounded-[26px] object-cover select-none"
+                draggable={false}
+                style={{
+                  left: '50%',
+                  top: 60,
+                  transform: 'translateX(-50%)',
+                  boxShadow: `0 0 18px 1px ${bgNetflix}30, 0 14px 30px -6px rgba(0,0,0,0.6)`,
+                }}
+              />
+            </div>
+            <p className="text-2xl font-semibold tracking-tight">
+              Vamos a configurar todo <span aria-hidden>✨</span>
+            </p>
+          </div>
+        ) : (
+        <>
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
           <h1 className="text-3xl font-semibold tracking-tight">
@@ -1194,18 +1373,21 @@ export default function Home() {
               )}
               <div className="flex flex-col gap-6">
                 {porFrecuencia[freq].map((s) => (
-                  <FilaSuscripcion key={s.id} s={s} freq={freq} onEditar={abrirEdicion} />
+                  <FilaSuscripcion
+                    key={s.id}
+                    s={s}
+                    freq={freq}
+                    onEditar={abrirEdicion}
+                    abiertaId={filaAbiertaId}
+                    setAbiertaId={setFilaAbiertaId}
+                  />
                 ))}
               </div>
             </div>
           ) : null
         )}
 
-        {subs.length === 0 && (
-          <div className="text-center py-16 text-white/40">
-            <p>Aún no tienes suscripciones.</p>
-            <p className="text-sm mt-1">Toca &quot;Añadir nueva&quot; para empezar.</p>
-          </div>
+        </>
         )}
       </div>
 
@@ -1246,7 +1428,7 @@ export default function Home() {
           de la app aunque el contenido no llegue hasta abajo */}
       {modalMontado && (
         <div
-          className={`fixed inset-0 bg-black/70 backdrop-blur-sm flex items-end sm:items-center justify-center z-50 p-0 sm:p-5 ${
+          className={`fixed inset-0 bg-black/70 backdrop-blur-sm overscroll-contain flex items-end sm:items-center justify-center z-50 p-0 sm:p-5 ${
             modalCerrando ? 'liquid-backdrop-out' : 'liquid-backdrop-in'
           }`}
         >
@@ -1256,12 +1438,17 @@ export default function Home() {
             }`}
           >
             <div
-              className="bg-[#141416] max-h-[90vh] overflow-y-auto"
-              style={{ paddingBottom: 'calc(1.5rem + env(safe-area-inset-bottom))' }}
+              className="max-h-[90vh] overflow-y-auto overscroll-y-contain"
+              style={{
+                paddingBottom: 'calc(1.5rem + env(safe-area-inset-bottom))',
+                backgroundColor: '#0e0e10',
+                backgroundImage:
+                  'radial-gradient(ellipse 90% 68% at 50% -5%, rgba(160, 160, 168, 0.42), rgba(120, 120, 128, 0.15) 38%, rgba(14, 14, 16, 0) 72%)',
+              }}
             >
             {pasoModal === 'elegir' ? (
               <div key="paso-elegir" className="liquid-step-in">
-                <div ref={headerModalRef} className="sticky top-0 z-10 px-6 pt-6 pb-4 bg-[#141416]">
+                <div ref={headerModalRef} className="sticky top-0 z-10 px-6 pt-6 pb-4 bg-[#141416]/70 backdrop-blur-xl">
                   <div className="flex items-center justify-between mb-5">
                     <button
                       onClick={cerrarModal}
@@ -1323,7 +1510,7 @@ export default function Home() {
                 ) : (
                   <>
                     <p
-                      className="text-white/40 text-sm font-medium py-1.5 sticky bg-[#141416] z-[5]"
+                      className="text-white/40 text-sm font-medium py-1.5 sticky bg-[#141416]/70 backdrop-blur-xl z-[5]"
                       style={{ top: alturaHeaderModal }}
                     >
                       Populares
@@ -1337,7 +1524,7 @@ export default function Home() {
                     {MARCAS_POR_LETRA.map(({ letra, marcas }) => (
                       <div key={letra}>
                         <p
-                          className="text-white/40 text-sm font-medium py-1.5 sticky bg-[#141416] z-[5]"
+                          className="text-white/40 text-sm font-medium py-1.5 sticky bg-[#141416]/70 backdrop-blur-xl z-[5]"
                           style={{ top: alturaHeaderModal }}
                         >
                           {letra}
@@ -1584,7 +1771,7 @@ export default function Home() {
           título + botón de cerrar, filas con ícono en cuadrito de color) */}
       {categoriaMontada && (
         <div
-          className={`fixed inset-0 z-[110] flex items-end justify-center ${
+          className={`fixed inset-0 z-[110] overscroll-contain flex items-end justify-center ${
             categoriaCerrando ? 'liquid-backdrop-out' : 'liquid-backdrop-in'
           }`}
         >
@@ -1611,7 +1798,7 @@ export default function Home() {
                 <X size={18} />
               </button>
             </div>
-            <div className="flex-1 overflow-y-auto px-3 pb-2">
+            <div className="flex-1 overflow-y-auto overscroll-y-contain px-3 pb-2">
               {CATEGORIAS.map((c) => {
                 const seleccionada = categoriaSel === c.nombre;
                 return (
